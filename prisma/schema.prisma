@@ -2,10 +2,8 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 // Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -18,41 +16,81 @@ enum TransactionType {
   transfer
 }
 
-model Bank {
-  id           String @id @default(cuid())
-  name         String
-  imageName    String @map("image_name") //в коде imageName, в бд - image_name
-  displayOrder Int    @map("display_order")
+model UserAuth {
+  id String @id @default(cuid())
+  login String @unique
+  passwordHash String @map("password_hash")
+  isFaceIdEnabled Boolean @map("is_face_id_enabled")
+  refreshToken String? @map("refresh_token")
+  biometricCredentials String? @map("biometric_credentials")
 
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
-  syncStatus String   @map("sync_status")
-  isDeleted  Boolean  @map("is_deleted")
+  syncStatus String?   @map("sync_status")
+  isDeleted  Boolean?  @map("is_deleted")
 
-  savingAccounts SavingAccount[] //обратная связь
+  userBank UserBank[]
+  userCategorySetting UserCategorySetting[]
+  transaction Transaction[]
+
+  @@map("user_auth")
+}
+
+model Bank {
+  id           String @id @default(cuid())
+  name         String
+  imageUrl    String @map("image_url") //в коде imageUrl, в бд - image_url
+
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  syncStatus String?   @map("sync_status")
+  isDeleted  Boolean?  @map("is_deleted")
+
+  userBank UserBank[] // совместимость
 
   @@map("banks")
+}
+
+model UserBank {
+  id String @id @default(cuid())
+
+  userAuthId String @map("user_auth_id")
+  userAuth   UserAuth   @relation(fields: [userAuthId], references: [id], onDelete: Cascade)
+
+  bankId String @map("bank_id")
+  bank   Bank   @relation(fields: [bankId], references: [id], onDelete: Cascade)
+
+  displayOrder Int             @map("display_order")
+
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  syncStatus String?   @map("sync_status")
+  isDeleted  Boolean?  @map("is_deleted")
+
+  savingAccount SavingAccount[]
+  goal Goal[]
+
+  @@map("user_bank")
 }
 
 model SavingAccount {
   id String @id @default(cuid())
 
-  bankId String @map("bank_id")
-  bank   Bank   @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  userBankId String @map("user_bank_id")
+  userBank UserBank @relation(fields: [userBankId], references: [id], onDelete: Cascade)
 
   name         String
-  currencyCode String  @map("currency_code")
-  iconName     String  @map("icon_name") //может значение из енамки для отображения карточек банков
   balance      Decimal
-  isArchived   Boolean @map("is_archived")
+  currencyCode String  @map("currency_code")
+  isArchived   Boolean? @map("is_archived") //TODO: xz?
 
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
-  syncStatus String   @map("sync_status")
-  isDeleted  Boolean  @map("is_deleted")
+  syncStatus String?   @map("sync_status")
+  isDeleted  Boolean?  @map("is_deleted")
 
   goals        Goal[]
-  transactions Transactions[]
+  transactions Transaction[]
 
   @@map("saving_accounts")
 }
@@ -60,21 +98,25 @@ model SavingAccount {
 model Goal {
   id String @id @default(cuid())
 
-  savingsAccountId String?        @map("savings_account_id")
-  savingsAccount   SavingAccount? @relation(fields: [savingsAccountId], references: [id], onDelete: SetNull)
+  userBankId String @map("user_bank_id")
+  userBank UserBank @relation(fields: [userBankId], references: [id], onDelete: Cascade)
 
   title         String
   targetAmount  Decimal  @map("target_amount")
-  iconName      String   @map("icon_name")
   currentAmount Decimal  @map("current_amount")
   currencyCode  String   @map("currency_code")
+  iconUrl      String   @map("icon_url")
+
+  savingsAccountId String?        @map("savings_account_id")
+  savingsAccount   SavingAccount? @relation(fields: [savingsAccountId], references: [id], onDelete: SetNull)
+
   deadlineAt    DateTime @default(now()) @map("deadline_at")
   isCompleted   Boolean  @map("is_completed")
 
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
-  syncStatus String   @map("sync_status")
-  isDeleted  Boolean  @map("is_deleted")
+  syncStatus String?   @map("sync_status")
+  isDeleted  Boolean?  @map("is_deleted")
 
   @@map("goals")
 }
@@ -89,18 +131,41 @@ model Category {
 
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
-  syncStatus String   @map("sync_status")
-  isDeleted  Boolean  @map("is_deleted")
+  syncStatus String?   @map("sync_status")
+  isDeleted  Boolean?  @map("is_deleted")
 
-  transactions Transactions[]
+  transactions Transaction[]
+  userCategorySetting UserCategorySetting[]
 
   @@map("category")
 }
 
-model Transactions {
+model UserCategorySetting {
+  id String @id @default(cuid())
+
+  userAuthId String @map("user_auth_id")
+  userAuth   UserAuth   @relation(fields: [userAuthId], references: [id], onDelete: Cascade)
+
+  categoryId String @map("category_id")
+  category   Category   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  isHidden Boolean @map("is_hidden")
+  customDisplayOrder Int @map("custom_display_order")
+
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  syncStatus String?   @map("sync_status")
+  isDeleted  Boolean?  @map("is_deleted")
+}
+
+model Transaction {
   id           String          @id @default(cuid())
+
+  userAuthId String @map("user_auth_id")
+  userAuth   UserAuth   @relation(fields: [userAuthId], references: [id], onDelete: Cascade)
+
   type         TransactionType
-  amout        Decimal
+  amount        Decimal
   currencyCode String          @map("currency_code")
 
   savingsAccountId String?        @map("savings_account_id")
@@ -110,11 +175,11 @@ model Transactions {
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
   title           String
-  note            String
+  note            String?
   transactionDate DateTime @default(now()) @map("transaction_date")
 
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
-  syncStatus String   @map("sync_status")
-  isDeleted  Boolean  @map("is_deleted")
+  syncStatus String?   @map("sync_status")
+  isDeleted  Boolean?  @map("is_deleted")
 }
